@@ -103,6 +103,8 @@ typedef struct {
 	Bool warp_cursor;
 	Bool floating_on_top;
 	Bool pinned_layer;
+	double pinned_overlay_opacity;
+	long pinned_overlay_col;
 	Bool new_win_master;
 	Binding binds[MAX_ITEMS];
 	char **should_float[MAX_ITEMS];

@@ -42,6 +42,8 @@ are ignored.
 .It unfocused_border_colour Ta Hex Ta #555555 Ta Border color for unfocused windows.
 .It swap_border_colour Ta Hex Ta #fff4c0 Ta Border color when selecting a window to swap (MOD+Shift+Drag).
 .It pinned_layer Ta Bool Ta false Ta Pinned windows get their own layer; only the active layer takes input (see toggle_pin_layer).
+.It pinned_overlay_opacity Ta Float Ta 0.5 Ta Opacity of the veil drawn over normal windows in the pinned layer (0 disables). Needs a compositor; window class is sxwm-pin-overlay.
+.It pinned_overlay_colour Ta Hex Ta #000000 Ta Colour of that veil.
 .It pinned_focused_border_colour Ta Hex Ta #ffcc66 Ta Border color of the focused pinned window.
 .It pinned_unfocused_border_colour Ta Hex Ta #8a6d2f Ta Border color of unfocused pinned windows.
 .It master_width Ta Integer Ta 60 Ta Percentage of the screen width for the master window.

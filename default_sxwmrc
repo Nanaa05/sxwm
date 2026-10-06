@@ -3,6 +3,8 @@ focused_border_colour    : #000000
 unfocused_border_colour  : #444444
 swap_border_colour       : #eeeeee
 pinned_layer                   : false
+pinned_overlay_opacity         : 0.5
+pinned_overlay_colour          : #000000
 pinned_focused_border_colour   : #ffcc66
 pinned_unfocused_border_colour : #8a6d2f
 

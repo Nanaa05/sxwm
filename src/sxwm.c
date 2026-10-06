@@ -212,7 +212,7 @@ Bool global_floating = False;
 static Bool pin_mode = False;
 static Bool pins_hidden = False;
 static Client *layer_last[2];
-static Window overlay_wins[MAX_MONITORS * 5];
+static Window overlay_wins[MAX_MONITORS];
 static int n_overlay = 0;
 Bool in_ws_switch = False;
 Bool running = False;
@@ -1056,6 +1056,10 @@ void hdl_config_ntf(XEvent *xev)
 {
 	if (xev->xconfigure.window == root) {
 		update_mons();
+		if (n_overlay) {
+			hide_overlay();
+			show_overlay();
+		}
 		tile();
 		update_borders();
 	}
@@ -1641,6 +1645,8 @@ void init_defaults(void)
 	user_config.new_win_master = False;
 	user_config.floating_on_top = True;
 	user_config.pinned_layer = False;
+	user_config.pinned_overlay_opacity = 0.5;
+	user_config.pinned_overlay_col = parse_col("#000000");
 }
 
 Bool is_child_proc(pid_t parent_pid, pid_t child_pid)
@@ -2056,6 +2062,7 @@ void reload_config(void)
 	update_net_client_list();
 	XSync(dpy, False);
 
+	hide_overlay(); /* rebuilt by apply_layer with the new opacity/colour */
 	apply_layer(); /* the pinned_layer flag may have changed */
 	tile();
 	update_borders();
@@ -3155,48 +3162,42 @@ void toggle_pin_hide(void)
 	raise_pinned();
 }
 
-/* coloured frame round every monitor + a badge, so it is obvious which layer is live */
+/* a dimming veil over every monitor while the pinned layer is live. it is an
+ * ordinary window with _NET_WM_WINDOW_OPACITY, so a compositor (picom) fades
+ * and blurs it. without a compositor it would be solid black, so skip it */
 void show_overlay(void)
 {
-	hide_overlay();
+	if (n_overlay)
+		return; /* already up */
 
-	const int t = 4, bw = 96, bh = 20;
-	long col = user_config.border_pin_foc_col;
-	XSetWindowAttributes wa = {.override_redirect = True, .background_pixel = col};
-	XFontStruct *fs = XLoadQueryFont(dpy, "fixed");
+	if (user_config.pinned_overlay_opacity <= 0.0)
+		return;
 
-	for (int m = 0; m < n_mons && n_overlay + 5 <= MAX_MONITORS * 5; m++) {
-		int x = mons[m].x, y = mons[m].y, w = mons[m].w, h = mons[m].h;
-		int r[5][4] = {
-			{x, y, w, t}, {x, y + h - t, w, t},
-			{x, y, t, h}, {x + w - t, y, t, h},
-			{x + (w - bw) / 2, y + t, bw, bh},
-		};
-		for (int i = 0; i < 5; i++) {
-			Window ow = XCreateWindow(dpy, root, r[i][0], r[i][1], r[i][2], r[i][3], 0,
-					CopyFromParent, InputOutput, CopyFromParent,
-					CWOverrideRedirect | CWBackPixel, &wa);
-			if (i == 4 && fs) {
-				/* bake the label into the background so it survives expose */
-				Pixmap pm = XCreatePixmap(dpy, root, bw, bh, DefaultDepth(dpy, DefaultScreen(dpy)));
-				GC gc = XCreateGC(dpy, pm, 0, NULL);
-				XSetForeground(dpy, gc, col);
-				XFillRectangle(dpy, pm, gc, 0, 0, bw, bh);
-				XSetForeground(dpy, gc, BlackPixel(dpy, DefaultScreen(dpy)));
-				XSetFont(dpy, gc, fs->fid);
-				int tw = XTextWidth(fs, "PINNED", 6);
-				XDrawString(dpy, pm, gc, (bw - tw) / 2, (bh + fs->ascent - fs->descent) / 2, "PINNED", 6);
-				XSetWindowBackgroundPixmap(dpy, ow, pm);
-				XFreeGC(dpy, gc);
-				XFreePixmap(dpy, pm);
-			}
-			set_click_through(ow, True);
-			XMapRaised(dpy, ow);
-			overlay_wins[n_overlay++] = ow;
-		}
+	Atom cm = XInternAtom(dpy, "_NET_WM_CM_S0", False);
+	if (XGetSelectionOwner(dpy, cm) == None) {
+		fprintf(stderr, "sxwm: no compositor running, not drawing the pinned overlay\n");
+		return;
 	}
-	if (fs)
-		XFreeFont(dpy, fs);
+
+	XSetWindowAttributes wa = {
+		.override_redirect = True,
+		.background_pixel = user_config.pinned_overlay_col,
+	};
+	for (int m = 0; m < n_mons && m < MAX_MONITORS; m++) {
+		Window ow = XCreateWindow(dpy, root, mons[m].x, mons[m].y, mons[m].w, mons[m].h, 0,
+				CopyFromParent, InputOutput, CopyFromParent,
+				CWOverrideRedirect | CWBackPixel, &wa);
+
+		/* picom rules can match on this (class_g = 'sxwm-pin-overlay') */
+		XStoreName(dpy, ow, "sxwm-pin-overlay");
+		XClassHint ch = {.res_name = "sxwm-pin-overlay", .res_class = "sxwm-pin-overlay"};
+		XSetClassHint(dpy, ow, &ch);
+
+		set_opacity(ow, user_config.pinned_overlay_opacity);
+		set_click_through(ow, True);
+		XMapWindow(dpy, ow);
+		overlay_wins[n_overlay++] = ow;
+	}
 }
 
 void hide_overlay(void)
@@ -3212,6 +3213,10 @@ void raise_pinned(void)
 	if (focused && focused->fullscreen)
 		return;
 
+	/* the veil sits above the normal windows but below every pinned one */
+	for (int i = 0; i < n_overlay; i++)
+		XRaiseWindow(dpy, overlay_wins[i]);
+
 	/* every pinned window lives on the current workspace's list. raise the
 	 * focused one last so it ends up on top of the other pinned windows */
 	Client *top = NULL;
@@ -3225,9 +3230,6 @@ void raise_pinned(void)
 	}
 	if (top)
 		XRaiseWindow(dpy, top->win);
-
-	for (int i = 0; i < n_overlay; i++)
-		XRaiseWindow(dpy, overlay_wins[i]);
 }
 
 void toggle_scratchpad(int n)

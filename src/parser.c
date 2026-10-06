@@ -375,6 +375,14 @@ int parser(Config *cfg)
 		}
 		else if (!strcmp(key, "floating_on_top"))
 			cfg->floating_on_top = !strcmp(rest, "true");
+		else if (!strcmp(key, "pinned_overlay_opacity")) {
+			double v = atof(rest);
+			if (v > 1.0)
+				v /= 100.0; /* accept 40 as well as 0.4 */
+			cfg->pinned_overlay_opacity = v < 0.0 ? 0.0 : v;
+		}
+		else if (!strcmp(key, "pinned_overlay_colour"))
+			cfg->pinned_overlay_col = parse_col(rest);
 		else if (!strcmp(key, "pinned_layer"))
 			cfg->pinned_layer = !strcmp(rest, "true");
 		else if (!strcmp(key, "pinned_focused_border_colour"))

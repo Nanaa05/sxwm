@@ -21,6 +21,8 @@ The file uses a `key : value` format. Lines starting with `#` are ignored.
 | `unfocused_border_colour`| Hex     | `#555555` | Border color for unfocused windows.                                         |
 | `swap_border_colour`     | Hex     | `#fff4c0` | Border color when selecting a window to swap (`MOD+Shift+Drag`).            |
 | `pinned_layer`           | Bool    | `false`   | Pinned windows get their own layer: only the active layer takes clicks/focus (`toggle_pin_layer`). When `false`, pinned windows are sticky floats usable from any workspace. |
+| `pinned_overlay_opacity` | Float   | `0.5`     | Opacity (0-1) of the black veil drawn over the normal windows while in the pinned layer. `0` disables it. Needs a compositor (e.g. picom), which can also blur it: the window class is `sxwm-pin-overlay`. |
+| `pinned_overlay_colour`  | Hex     | `#000000` | Colour of that veil.                                                          |
 | `pinned_focused_border_colour`   | Hex | `#ffcc66` | Border color of the focused pinned window.                           |
 | `pinned_unfocused_border_colour` | Hex | `#8a6d2f` | Border color of unfocused pinned windows.                            |
 | `master_width`           | Integer | `60`      | Percentage of the screen width for the master window.                       |
@@ -109,7 +111,7 @@ workspace : modifier + ... + key : swap n
 | `toggle_floating`    | Toggles floating state of current window.                    |
 | `toggle_monocle`     | Toggles the monocle layout.                                  |
 | `toggle_pin_hide`    | With `pinned_layer`: hide/show the pinned windows. Entering the pinned layer shows them again while you are in it. |
-| `toggle_pin_layer`   | With `pinned_layer`: switch between the normal layer and the pinned layer (marked by a coloured frame + badge). |
+| `toggle_pin_layer`   | With `pinned_layer`: switch between the normal layer and the pinned layer (the normal windows are dimmed by a veil, see `pinned_overlay_opacity`). |
 | `toggle_pin`         | Pins the focused window: it floats above everything and follows you to every workspace. Run again to unpin (it stays on the current workspace). No limit on pinned windows. |
 
 ### Example Bindings
