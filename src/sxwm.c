@@ -128,6 +128,7 @@ void tile(void);
 /* void toggle_monocle(void); */
 /* void toggle_pin(void); */
 /* void toggle_pin_layer(void); */
+/* void toggle_pin_hide(void); */
 void toggle_scratchpad(int n);
 void unswallow_window(Client *c);
 void update_borders(void);
@@ -209,6 +210,7 @@ Bool global_floating = False;
 
 /* pinned layer: which layer (normal / pinned) currently takes input */
 static Bool pin_mode = False;
+static Bool pins_hidden = False;
 static Client *layer_last[2];
 static Window overlay_wins[MAX_MONITORS * 5];
 static int n_overlay = 0;
@@ -308,6 +310,7 @@ Client *add_client(Window w, int ws)
 	c->floating = False;
 	c->pinned = False;
 	c->click_through = False;
+	c->hidden = False;
 	c->fullscreen = False;
 	c->mapped = True;
 	c->custom_stack_height = 0;
@@ -485,7 +488,7 @@ void change_workspace(int ws)
 	/* pinned windows stay mapped and follow us to the new workspace */
 	for (Client **pp = &workspaces[previous_workspace]; *pp;) {
 		Client *c = *pp;
-		if (!c->pinned || !c->mapped) {
+		if (!c->pinned || !(c->mapped || c->hidden)) {
 			pp = &c->next;
 			continue;
 		}
@@ -3078,6 +3081,22 @@ void apply_layer(void)
 	if (!user_config.pinned_layer)
 		pin_mode = False;
 
+	/* hidden pins are only visible while we are in the pinned layer */
+	Bool pins_shown = !user_config.pinned_layer || !pins_hidden || pin_mode;
+	for (Client *c = workspaces[current_ws]; c; c = c->next) {
+		Bool want_shown = !c->pinned || pins_shown;
+		if (c->hidden && want_shown) {
+			XMapWindow(dpy, c->win);
+			c->mapped = True;
+			c->hidden = False;
+		}
+		else if (!c->hidden && c->pinned && !want_shown && c->mapped) {
+			c->hidden = True;
+			c->mapped = False;
+			XUnmapWindow(dpy, c->win);
+		}
+	}
+
 	for (int ws = 0; ws < NUM_WORKSPACES; ws++) {
 		for (Client *c = workspaces[ws]; c; c = c->next) {
 			Bool want = user_config.pinned_layer && !in_layer(c);
@@ -3117,13 +3136,23 @@ void toggle_pin_layer(void)
 	if (!pin_mode) {
 		Bool any = False;
 		for (Client *c = workspaces[current_ws]; c; c = c->next)
-			if (c->pinned && c->mapped)
+			if (c->pinned && (c->mapped || c->hidden))
 				any = True;
 		if (!any)
 			return; /* nothing to interact with up there */
 	}
 
 	set_pin_mode(!pin_mode);
+}
+
+void toggle_pin_hide(void)
+{
+	if (!user_config.pinned_layer)
+		return;
+
+	pins_hidden = !pins_hidden;
+	apply_layer();
+	raise_pinned();
 }
 
 /* coloured frame round every monitor + a badge, so it is obvious which layer is live */

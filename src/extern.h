@@ -34,4 +34,5 @@ extern void toggle_fullscreen(void);
 extern void toggle_monocle(void);
 extern void toggle_pin(void);
 extern void toggle_pin_layer(void);
+extern void toggle_pin_hide(void);
 

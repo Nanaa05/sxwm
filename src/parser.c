@@ -60,6 +60,7 @@ static const CommandEntry call_table[] = {
 	{"toggle_monocle",            toggle_monocle},
 	{"toggle_pin",                toggle_pin},
 	{"toggle_pin_layer",          toggle_pin_layer},
+	{"toggle_pin_hide",           toggle_pin_hide},
 	{NULL, NULL},
 };
 

@@ -42,6 +42,7 @@ call : mod + shift + e : quit
 call : mod + m : toggle_monocle
 call : mod + shift + o : toggle_pin
 call : mod + 0 : toggle_pin_layer
+call : mod + shift + 0 : toggle_pin_hide
 
 # Focus Movement:
 call : mod + j : focus_next

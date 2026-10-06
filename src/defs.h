@@ -73,6 +73,7 @@ typedef struct Client {
 	Bool floating;
 	Bool pinned;
 	Bool click_through;
+	Bool hidden;
 	Bool fullscreen;
 	Bool mapped;
 	pid_t pid;

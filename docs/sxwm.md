@@ -108,6 +108,7 @@ workspace : modifier + ... + key : swap n
 | `switch_previous_workspace` | Switch to the previous workspace.                     |
 | `toggle_floating`    | Toggles floating state of current window.                    |
 | `toggle_monocle`     | Toggles the monocle layout.                                  |
+| `toggle_pin_hide`    | With `pinned_layer`: hide/show the pinned windows. Entering the pinned layer shows them again while you are in it. |
 | `toggle_pin_layer`   | With `pinned_layer`: switch between the normal layer and the pinned layer (marked by a coloured frame + badge). |
 | `toggle_pin`         | Pins the focused window: it floats above everything and follows you to every workspace. Run again to unpin (it stays on the current workspace). No limit on pinned windows. |
 
