@@ -72,6 +72,7 @@ typedef struct Client {
 	Bool fixed;
 	Bool floating;
 	Bool pinned;
+	Bool click_through;
 	Bool fullscreen;
 	Bool mapped;
 	pid_t pid;
@@ -100,6 +101,7 @@ typedef struct {
 	Bool new_win_focus;
 	Bool warp_cursor;
 	Bool floating_on_top;
+	Bool pinned_layer;
 	Bool new_win_master;
 	Binding binds[MAX_ITEMS];
 	char **should_float[MAX_ITEMS];

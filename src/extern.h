@@ -33,4 +33,5 @@ extern void toggle_floating_global(void);
 extern void toggle_fullscreen(void);
 extern void toggle_monocle(void);
 extern void toggle_pin(void);
+extern void toggle_pin_layer(void);
 

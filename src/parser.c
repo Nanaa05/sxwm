@@ -59,6 +59,7 @@ static const CommandEntry call_table[] = {
 	{"toggle_floating",           toggle_floating},
 	{"toggle_monocle",            toggle_monocle},
 	{"toggle_pin",                toggle_pin},
+	{"toggle_pin_layer",          toggle_pin_layer},
 	{NULL, NULL},
 };
 
@@ -373,6 +374,8 @@ int parser(Config *cfg)
 		}
 		else if (!strcmp(key, "floating_on_top"))
 			cfg->floating_on_top = !strcmp(rest, "true");
+		else if (!strcmp(key, "pinned_layer"))
+			cfg->pinned_layer = !strcmp(rest, "true");
 		else if (!strcmp(key, "pinned_focused_border_colour"))
 			cfg->border_pin_foc_col = parse_col(rest);
 		else if (!strcmp(key, "pinned_unfocused_border_colour"))

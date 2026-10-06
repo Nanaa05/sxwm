@@ -6,7 +6,7 @@ PREFIX = /usr/local
 MANPREFIX = ${PREFIX}/share/man
 
 # libs
-LIBS = -lX11 -lXinerama -lXcursor
+LIBS = -lX11 -lXinerama -lXcursor -lXext
 
 # flags
 CPPFLAGS = -D_DEFAULT_SOURCE -D_XOPEN_SOURCE=700

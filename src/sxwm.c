@@ -30,6 +30,7 @@
 #include <X11/Xutil.h>
 
 #include <X11/extensions/Xinerama.h>
+#include <X11/extensions/shape.h>
 #include <X11/Xcursor/Xcursor.h>
 
 #include "defs.h"
@@ -114,12 +115,19 @@ void swallow_window(Client *swallower, Client *swallowed);
 void swap_clients(Client *a, Client *b);
 /* void switch_previous_workspace(void); */
 void raise_pinned(void);
+Bool in_layer(Client *c);
+void apply_layer(void);
+void set_pin_mode(Bool on);
+Client *pick_focus(void);
+void show_overlay(void);
+void hide_overlay(void);
 void tile(void);
 /* void toggle_floating(void); */
 /* void toggle_floating_global(void); */
 /* void toggle_fullscreen(void); */
 /* void toggle_monocle(void); */
 /* void toggle_pin(void); */
+/* void toggle_pin_layer(void); */
 void toggle_scratchpad(int n);
 void unswallow_window(Client *c);
 void update_borders(void);
@@ -198,6 +206,12 @@ int current_ws = 0;
 int current_mon = 0;
 long last_motion_time = 0;
 Bool global_floating = False;
+
+/* pinned layer: which layer (normal / pinned) currently takes input */
+static Bool pin_mode = False;
+static Client *layer_last[2];
+static Window overlay_wins[MAX_MONITORS * 5];
+static int n_overlay = 0;
 Bool in_ws_switch = False;
 Bool running = False;
 Bool monocle = False;
@@ -293,6 +307,7 @@ Client *add_client(Window w, int ws)
 	c->fixed = False;
 	c->floating = False;
 	c->pinned = False;
+	c->click_through = False;
 	c->fullscreen = False;
 	c->mapped = True;
 	c->custom_stack_height = 0;
@@ -390,7 +405,8 @@ void change_workspace(int ws)
 		return;
 
 	/* remember last focus for workspace we are leaving */
-	ws_focused[current_ws] = focused;
+	if (!(user_config.pinned_layer && focused && focused->pinned))
+		ws_focused[current_ws] = focused;
 
 	in_ws_switch = True;
 	XGrabServer(dpy); /* freeze rendering for tearless switching */
@@ -484,6 +500,7 @@ void change_workspace(int ws)
 	}
 
 	tile();
+	apply_layer();
 	raise_pinned();
 
 	/* restore last focused client for this workspace */
@@ -492,7 +509,7 @@ void change_workspace(int ws)
 	if (focused) {
 		Client *found = NULL;
 		for (Client *c = workspaces[current_ws]; c; c = c->next) {
-			if (c == focused && c->mapped) {
+			if (c == focused && c->mapped && in_layer(c)) {
 				found = c;
 				break;
 			}
@@ -504,7 +521,7 @@ void change_workspace(int ws)
 	/* fallback: choose a mapped client on current_ws, preferring current_mon */
 	if (!focused && workspaces[current_ws]) {
 		for (Client *c = workspaces[current_ws]; c; c = c->next) {
-			if (!c->mapped)
+			if (!c->mapped || !in_layer(c))
 				continue;
 			if (c->mon == current_mon) {
 				focused = c;
@@ -643,10 +660,10 @@ void focus_next(void)
 	/* loop until we find a mapped client or return to start */
 	do
 		c = c->next ? c->next : workspaces[current_ws];
-	while (( !c->mapped || c->mon != current_mon ) && c != start);
+	while (( !c->mapped || c->mon != current_mon || !in_layer(c) ) && c != start);
 
 	/* if we return to start: */
-	if (!c->mapped || c->mon != current_mon)
+	if (!c->mapped || c->mon != current_mon || !in_layer(c))
 		return;
 
 	focused = c;
@@ -681,10 +698,10 @@ void focus_prev(void)
 				p = p->next;
 			c = p;
 		}
-	} while (( !c->mapped || c->mon != current_mon ) && c != start);
+	} while (( !c->mapped || c->mon != current_mon || !in_layer(c) ) && c != start);
 
 	/* this stops invisible windows being detected or focused */
-	if (!c->mapped || c->mon != current_mon)
+	if (!c->mapped || c->mon != current_mon || !in_layer(c))
 		return;
 
 	focused = c;
@@ -701,7 +718,7 @@ void focus_next_mon(void)
 	/* find the first window on the target monitor in current workspace */
 	Client *target_client = NULL;
 	for (Client *c = workspaces[current_ws]; c; c = c->next) {
-		if (c->mon == target_mon && c->mapped) {
+		if (c->mon == target_mon && c->mapped && in_layer(c)) {
 			target_client = c;
 			break;
 		}
@@ -732,7 +749,7 @@ void focus_prev_mon(void)
 	/* find the first window on the target monitor in current workspace */
 	Client *target_client = NULL;
 	for (Client *c = workspaces[current_ws]; c; c = c->next) {
-		if (c->mon == target_mon && c->mapped) {
+		if (c->mon == target_mon && c->mapped && in_layer(c)) {
 			target_client = c;
 			break;
 		}
@@ -1132,15 +1149,21 @@ void hdl_destroy_ntf(XEvent *xev)
 
 			/* prefer previous window else next */
 			Client *foc_new = NULL;
-			if (prev && prev->mapped && prev->mon == current_mon)
+			if (prev && prev->mapped && prev->mon == current_mon && in_layer(prev))
 				foc_new = prev;
 			else {
 				for (Client *p = workspaces[i]; p; p = p->next) {
-					if (!p->mapped || p->mon != current_mon)
+					if (!p->mapped || p->mon != current_mon || !in_layer(p))
 						continue;
 					foc_new = p;
 					break;
 				}
+			}
+
+			/* last pinned window gone: leave the pinned layer */
+			if (!foc_new && user_config.pinned_layer && pin_mode) {
+				set_pin_mode(False);
+				return;
 			}
 
 			if (foc_new)
@@ -1279,6 +1302,10 @@ void hdl_map_req(XEvent *xev)
 	if (!c)
 		return;
 	set_wm_state(w, NormalState);
+
+	/* a new window is a normal window: go back to the normal layer */
+	if (user_config.pinned_layer && pin_mode)
+		set_pin_mode(False);
 
 	Window transient;
 	if (!should_float && XGetTransientForHint(dpy, w, &transient))
@@ -1610,6 +1637,7 @@ void init_defaults(void)
 	user_config.warp_cursor = True;
 	user_config.new_win_master = False;
 	user_config.floating_on_top = True;
+	user_config.pinned_layer = False;
 }
 
 Bool is_child_proc(pid_t parent_pid, pid_t child_pid)
@@ -2025,6 +2053,7 @@ void reload_config(void)
 	update_net_client_list();
 	XSync(dpy, False);
 
+	apply_layer(); /* the pinned_layer flag may have changed */
 	tile();
 	update_borders();
 }
@@ -2360,7 +2389,9 @@ void set_input_focus(Client *c, Bool raise_win, Bool warp)
 		current_mon = CLAMP(c->mon, 0, n_mons - 1);
 
 		/* update remembered focus */
-		if (c->ws >= 0 && c->ws < NUM_WORKSPACES)
+		layer_last[c->pinned ? 1 : 0] = c;
+		if (c->ws >= 0 && c->ws < NUM_WORKSPACES &&
+		    !(user_config.pinned_layer && c->pinned))
 			ws_focused[c->ws] = c;
 
 		Window w = find_toplevel(c->win);
@@ -2975,9 +3006,175 @@ void toggle_pin(void)
 	}
 
 	tile();
-	set_input_focus(c, True, False);
+	apply_layer();
+
+	if (in_layer(c)) {
+		set_input_focus(c, True, False);
+	}
+	else {
+		/* it moved to the other layer: hand focus to something in this one */
+		Client *n = pick_focus();
+		if (n)
+			set_input_focus(n, True, False);
+		else if (pin_mode) {
+			/* nothing pinned left: leave the layer, keep the window we just unpinned */
+			pin_mode = False;
+			apply_layer();
+			set_input_focus(c, True, False);
+		}
+		else
+			set_input_focus(NULL, False, False);
+	}
+
 	raise_pinned();
 	update_borders();
+}
+
+Bool in_layer(Client *c)
+{
+	return !user_config.pinned_layer || c->pinned == pin_mode;
+}
+
+static Bool focus_valid(Client *c)
+{
+	if (!c)
+		return False;
+	for (Client *p = workspaces[current_ws]; p; p = p->next)
+		if (p == c)
+			return c->mapped && in_layer(c);
+	return False;
+}
+
+Client *pick_focus(void)
+{
+	if (focus_valid(ws_focused[current_ws]))
+		return ws_focused[current_ws];
+	if (focus_valid(layer_last[pin_mode ? 1 : 0]))
+		return layer_last[pin_mode ? 1 : 0];
+
+	Client *any = NULL;
+	for (Client *c = workspaces[current_ws]; c; c = c->next) {
+		if (!c->mapped || !in_layer(c))
+			continue;
+		if (c->mon == current_mon)
+			return c;
+		if (!any)
+			any = c;
+	}
+	return any;
+}
+
+static void set_click_through(Window w, Bool on)
+{
+	if (on)
+		XShapeCombineRectangles(dpy, w, ShapeInput, 0, 0, NULL, 0, ShapeSet, Unsorted);
+	else
+		XShapeCombineMask(dpy, w, ShapeInput, 0, 0, None, ShapeSet);
+}
+
+/* the layer that is not active is visible but click-through */
+void apply_layer(void)
+{
+	if (!user_config.pinned_layer)
+		pin_mode = False;
+
+	for (int ws = 0; ws < NUM_WORKSPACES; ws++) {
+		for (Client *c = workspaces[ws]; c; c = c->next) {
+			Bool want = user_config.pinned_layer && !in_layer(c);
+			if (want != c->click_through) {
+				set_click_through(c->win, want);
+				c->click_through = want;
+			}
+		}
+	}
+
+	if (pin_mode)
+		show_overlay();
+	else
+		hide_overlay();
+
+	update_borders();
+}
+
+void set_pin_mode(Bool on)
+{
+	if (!user_config.pinned_layer)
+		return;
+
+	pin_mode = on;
+	apply_layer();
+
+	Client *n = pick_focus();
+	set_input_focus(n, True, True);
+	raise_pinned();
+}
+
+void toggle_pin_layer(void)
+{
+	if (!user_config.pinned_layer)
+		return;
+
+	if (!pin_mode) {
+		Bool any = False;
+		for (Client *c = workspaces[current_ws]; c; c = c->next)
+			if (c->pinned && c->mapped)
+				any = True;
+		if (!any)
+			return; /* nothing to interact with up there */
+	}
+
+	set_pin_mode(!pin_mode);
+}
+
+/* coloured frame round every monitor + a badge, so it is obvious which layer is live */
+void show_overlay(void)
+{
+	hide_overlay();
+
+	const int t = 4, bw = 96, bh = 20;
+	long col = user_config.border_pin_foc_col;
+	XSetWindowAttributes wa = {.override_redirect = True, .background_pixel = col};
+	XFontStruct *fs = XLoadQueryFont(dpy, "fixed");
+
+	for (int m = 0; m < n_mons && n_overlay + 5 <= MAX_MONITORS * 5; m++) {
+		int x = mons[m].x, y = mons[m].y, w = mons[m].w, h = mons[m].h;
+		int r[5][4] = {
+			{x, y, w, t}, {x, y + h - t, w, t},
+			{x, y, t, h}, {x + w - t, y, t, h},
+			{x + (w - bw) / 2, y + t, bw, bh},
+		};
+		for (int i = 0; i < 5; i++) {
+			Window ow = XCreateWindow(dpy, root, r[i][0], r[i][1], r[i][2], r[i][3], 0,
+					CopyFromParent, InputOutput, CopyFromParent,
+					CWOverrideRedirect | CWBackPixel, &wa);
+			if (i == 4 && fs) {
+				/* bake the label into the background so it survives expose */
+				Pixmap pm = XCreatePixmap(dpy, root, bw, bh, DefaultDepth(dpy, DefaultScreen(dpy)));
+				GC gc = XCreateGC(dpy, pm, 0, NULL);
+				XSetForeground(dpy, gc, col);
+				XFillRectangle(dpy, pm, gc, 0, 0, bw, bh);
+				XSetForeground(dpy, gc, BlackPixel(dpy, DefaultScreen(dpy)));
+				XSetFont(dpy, gc, fs->fid);
+				int tw = XTextWidth(fs, "PINNED", 6);
+				XDrawString(dpy, pm, gc, (bw - tw) / 2, (bh + fs->ascent - fs->descent) / 2, "PINNED", 6);
+				XSetWindowBackgroundPixmap(dpy, ow, pm);
+				XFreeGC(dpy, gc);
+				XFreePixmap(dpy, pm);
+			}
+			set_click_through(ow, True);
+			XMapRaised(dpy, ow);
+			overlay_wins[n_overlay++] = ow;
+		}
+	}
+	if (fs)
+		XFreeFont(dpy, fs);
+}
+
+void hide_overlay(void)
+{
+	for (int i = 0; i < n_overlay; i++)
+		XDestroyWindow(dpy, overlay_wins[i]);
+	n_overlay = 0;
 }
 
 void raise_pinned(void)
@@ -2999,6 +3196,9 @@ void raise_pinned(void)
 	}
 	if (top)
 		XRaiseWindow(dpy, top->win);
+
+	for (int i = 0; i < n_overlay; i++)
+		XRaiseWindow(dpy, overlay_wins[i]);
 }
 
 void toggle_scratchpad(int n)

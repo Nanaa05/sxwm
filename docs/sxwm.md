@@ -20,6 +20,7 @@ The file uses a `key : value` format. Lines starting with `#` are ignored.
 | `focused_border_colour`  | Hex     | `#c0cbff` | Border color for the currently focused window.                              |
 | `unfocused_border_colour`| Hex     | `#555555` | Border color for unfocused windows.                                         |
 | `swap_border_colour`     | Hex     | `#fff4c0` | Border color when selecting a window to swap (`MOD+Shift+Drag`).            |
+| `pinned_layer`           | Bool    | `false`   | Pinned windows get their own layer: only the active layer takes clicks/focus (`toggle_pin_layer`). When `false`, pinned windows are sticky floats usable from any workspace. |
 | `pinned_focused_border_colour`   | Hex | `#ffcc66` | Border color of the focused pinned window.                           |
 | `pinned_unfocused_border_colour` | Hex | `#8a6d2f` | Border color of unfocused pinned windows.                            |
 | `master_width`           | Integer | `60`      | Percentage of the screen width for the master window.                       |
@@ -107,6 +108,7 @@ workspace : modifier + ... + key : swap n
 | `switch_previous_workspace` | Switch to the previous workspace.                     |
 | `toggle_floating`    | Toggles floating state of current window.                    |
 | `toggle_monocle`     | Toggles the monocle layout.                                  |
+| `toggle_pin_layer`   | With `pinned_layer`: switch between the normal layer and the pinned layer (marked by a coloured frame + badge). |
 | `toggle_pin`         | Pins the focused window: it floats above everything and follows you to every workspace. Run again to unpin (it stays on the current workspace). No limit on pinned windows. |
 
 ### Example Bindings
