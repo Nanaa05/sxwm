@@ -113,11 +113,13 @@ void startup_exec(void);
 void swallow_window(Client *swallower, Client *swallowed);
 void swap_clients(Client *a, Client *b);
 /* void switch_previous_workspace(void); */
+void raise_pinned(void);
 void tile(void);
 /* void toggle_floating(void); */
 /* void toggle_floating_global(void); */
 /* void toggle_fullscreen(void); */
 /* void toggle_monocle(void); */
+/* void toggle_pin(void); */
 void toggle_scratchpad(int n);
 void unswallow_window(Client *c);
 void update_borders(void);
@@ -290,6 +292,7 @@ Client *add_client(Window w, int ws)
 	c->mon = cursor_mon;
 	c->fixed = False;
 	c->floating = False;
+	c->pinned = False;
 	c->fullscreen = False;
 	c->mapped = True;
 	c->custom_stack_height = 0;
@@ -412,7 +415,7 @@ void change_workspace(int ws)
 					break;
 				}
 			}
-			if (!is_scratchpad)
+			if (!is_scratchpad && !c->pinned)
 				XUnmapWindow(dpy, c->win);
 		}
 	}
@@ -463,7 +466,25 @@ void change_workspace(int ws)
 		}
 	}
 
+	/* pinned windows stay mapped and follow us to the new workspace */
+	for (Client **pp = &workspaces[previous_workspace]; *pp;) {
+		Client *c = *pp;
+		if (!c->pinned || !c->mapped) {
+			pp = &c->next;
+			continue;
+		}
+		*pp = c->next;
+		c->next = workspaces[current_ws];
+		workspaces[current_ws] = c;
+		c->ws = current_ws;
+
+		long desktop = current_ws;
+		XChangeProperty(dpy, c->win, atoms[ATOM_NET_WM_DESKTOP], XA_CARDINAL, 32,
+				        PropModeReplace, (unsigned char *)&desktop, 1);
+	}
+
 	tile();
+	raise_pinned();
 
 	/* restore last focused client for this workspace */
 	focused = ws_focused[current_ws];
@@ -1565,6 +1586,8 @@ void init_defaults(void)
 	user_config.border_foc_col = parse_col("#c0cbff");
 	user_config.border_ufoc_col = parse_col("#555555");
 	user_config.border_swap_col = parse_col("#fff4c0");
+	user_config.border_pin_foc_col = parse_col("#ffcc66");
+	user_config.border_pin_ufoc_col = parse_col("#8a6d2f");
 	user_config.move_window_amt = 10;
 	user_config.resize_window_amt = 10;
 
@@ -1773,7 +1796,7 @@ void move_prev_mon(void)
 
 void move_to_workspace(int ws)
 {
-	if (!focused || ws >= NUM_WORKSPACES || ws == current_ws)
+	if (!focused || focused->pinned || ws >= NUM_WORKSPACES || ws == current_ws)
 		return;
 
 	Client *moved = focused;
@@ -2153,6 +2176,12 @@ void run(void)
 	while (running) {
 		XNextEvent(dpy, &xev);
 		xev_case(&xev);
+
+		/* new windows, key and click actions never bury pinned windows.
+		 * not on MapNotify: that would put dmenu/menus under them */
+		if (xev.type == MapRequest || xev.type == KeyPress ||
+		    xev.type == ButtonPress || xev.type == ClientMessage)
+			raise_pinned();
 	}
 }
 
@@ -2830,6 +2859,12 @@ void toggle_floating(void)
 	if (!focused)
 		return;
 
+	/* a pinned window is always floating; toggling just unpins it */
+	if (focused->pinned) {
+		toggle_pin();
+		return;
+	}
+
 	if (focused->fullscreen) {
 		focused->fullscreen = False;
 		tile();
@@ -2874,13 +2909,15 @@ void toggle_floating_global(void)
 	global_floating = !global_floating;
 	Bool any_tiled = False;
 	for (Client *c = workspaces[current_ws]; c; c = c->next) {
-		if (!c->floating) {
+		if (!c->floating && !c->pinned) {
 			any_tiled = True;
 			break;
 		}
 	}
 
 	for (Client *c = workspaces[current_ws]; c; c = c->next) {
+		if (c->pinned)
+			continue;
 		c->floating = any_tiled;
 		if (c->floating) {
 			XWindowAttributes wa;
@@ -2915,6 +2952,53 @@ void toggle_monocle(void)
 	update_borders();
 	if (focused)
 		set_input_focus(focused, True, True);
+}
+
+void toggle_pin(void)
+{
+	if (!focused || !focused->mapped || focused->fullscreen)
+		return;
+
+	Client *c = focused;
+	c->pinned = !c->pinned;
+
+	if (c->pinned && !c->floating) {
+		/* pinned windows float; keep the geometry it has right now */
+		XWindowAttributes wa;
+		if (XGetWindowAttributes(dpy, c->win, &wa)) {
+			c->x = wa.x;
+			c->y = wa.y;
+			c->w = wa.width;
+			c->h = wa.height;
+		}
+		c->floating = True;
+	}
+
+	tile();
+	set_input_focus(c, True, False);
+	raise_pinned();
+	update_borders();
+}
+
+void raise_pinned(void)
+{
+	/* a fullscreen window may cover everything */
+	if (focused && focused->fullscreen)
+		return;
+
+	/* every pinned window lives on the current workspace's list. raise the
+	 * focused one last so it ends up on top of the other pinned windows */
+	Client *top = NULL;
+	for (Client *c = workspaces[current_ws]; c; c = c->next) {
+		if (!c->pinned || !c->mapped)
+			continue;
+		if (c == focused)
+			top = c;
+		else
+			XRaiseWindow(dpy, c->win);
+	}
+	if (top)
+		XRaiseWindow(dpy, top->win);
 }
 
 void toggle_scratchpad(int n)
@@ -2992,8 +3076,14 @@ void unswallow_window(Client *c)
 
 void update_borders(void)
 {
-	for (Client *c = workspaces[current_ws]; c; c = c->next)
-		XSetWindowBorder(dpy, c->win, (c == focused ? user_config.border_foc_col : user_config.border_ufoc_col));
+	for (Client *c = workspaces[current_ws]; c; c = c->next) {
+		long col;
+		if (c->pinned)
+			col = (c == focused ? user_config.border_pin_foc_col : user_config.border_pin_ufoc_col);
+		else
+			col = (c == focused ? user_config.border_foc_col : user_config.border_ufoc_col);
+		XSetWindowBorder(dpy, c->win, col);
+	}
 
 	if (focused) {
 		Window w = focused->win;

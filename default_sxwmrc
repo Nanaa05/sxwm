@@ -2,6 +2,8 @@
 focused_border_colour    : #000000
 unfocused_border_colour  : #444444
 swap_border_colour       : #eeeeee
+pinned_focused_border_colour   : #ffcc66
+pinned_unfocused_border_colour : #8a6d2f
 
 # General Options:
 gaps                    : 5
@@ -37,6 +39,7 @@ call : mod + shift + q : close_window
 call : mod + c : centre_window
 call : mod + shift + e : quit
 call : mod + m : toggle_monocle
+call : mod + shift + o : toggle_pin
 
 # Focus Movement:
 call : mod + j : focus_next

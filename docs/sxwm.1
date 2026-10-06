@@ -41,6 +41,8 @@ are ignored.
 .It focused_border_colour Ta Hex Ta #c0cbff Ta Border color for the currently focused window.
 .It unfocused_border_colour Ta Hex Ta #555555 Ta Border color for unfocused windows.
 .It swap_border_colour Ta Hex Ta #fff4c0 Ta Border color when selecting a window to swap (MOD+Shift+Drag).
+.It pinned_focused_border_colour Ta Hex Ta #ffcc66 Ta Border color of the focused pinned window.
+.It pinned_unfocused_border_colour Ta Hex Ta #8a6d2f Ta Border color of unfocused pinned windows.
 .It master_width Ta Integer Ta 60 Ta Percentage of the screen width for the master window.
 .It motion_throttle Ta Integer Ta 60 Ta Target FPS for mouse drag actions.
 .It resize_master_amount Ta Integer Ta 1 Ta Percent to increase/decrease master width.
@@ -128,6 +130,7 @@ workspace : modifier + ... + key : swap n
 .It switch_previous_workspace Ta Switch to the previous workspace.
 .It toggle_floating Ta Toggles floating state of current window.
 .It toggle_monocle Ta Toggles monocle layout.
+.It toggle_pin Ta Pins the focused window above everything and shows it on every workspace; run again to unpin.
 .El
 .Ss Example Bindings
 .Bd -literal

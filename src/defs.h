@@ -71,6 +71,7 @@ typedef struct Client {
 	int ws;
 	Bool fixed;
 	Bool floating;
+	Bool pinned;
 	Bool fullscreen;
 	Bool mapped;
 	pid_t pid;
@@ -86,6 +87,8 @@ typedef struct {
 	long border_foc_col;
 	long border_ufoc_col;
 	long border_swap_col;
+	long border_pin_foc_col;
+	long border_pin_ufoc_col;
 	float master_width[MAX_MONITORS];
 	int motion_throttle;
 	int resize_master_amt;
